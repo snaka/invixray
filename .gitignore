@@ -1,0 +1,30 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xcuserdatad/
+
+# XcodeGen output (regenerated from project.yml)
+*.xcodeproj/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# CI / signing artifacts
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+ExportOptions.plist
+build-output/
+
+# Editor
+.vscode/
+.idea/
