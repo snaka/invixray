@@ -1,0 +1,52 @@
+name: Invixray
+options:
+  bundleIdPrefix: com.snaka
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+
+packages:
+  Invixray:
+    path: .
+
+targets:
+  Invixray:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/Invixray
+    dependencies:
+      - package: Invixray
+        product: InvixrayCore
+      - package: Invixray
+        product: InvixrayMonitor
+    info:
+      path: Sources/Invixray/Info.plist
+      properties:
+        CFBundleName: Invixray
+        CFBundleDisplayName: Invixray
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSUIElement: true
+        NSHumanReadableCopyright: "Copyright © 2026 snaka. MIT Licensed."
+        NSHighResolutionCapable: true
+    entitlements:
+      path: Sources/Invixray/Invixray.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snaka.invixray
+        GENERATE_INFOPLIST_FILE: NO

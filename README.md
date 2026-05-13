@@ -18,6 +18,29 @@ Detection rules are based on [Graves, 2026 — *Reverse CAPTCHA: Evaluating LLM 
 
 Early development. No release yet.
 
+## Build
+
+The Xcode project is generated from `project.yml` via [XcodeGen](https://github.com/yonaskolb/XcodeGen) and is gitignored — regenerate after pulling or editing `project.yml`.
+
+```bash
+xcodegen generate
+open Invixray.xcodeproj
+```
+
+Or build from the command line (unsigned, for local debugging):
+
+```bash
+xcodebuild -project Invixray.xcodeproj -scheme Invixray -configuration Debug \
+  -destination 'platform=macOS' \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+```
+
+The pure-Swift detection module has unit tests:
+
+```bash
+swift test
+```
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
