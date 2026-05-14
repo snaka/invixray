@@ -12,17 +12,14 @@ Tracking work that is intentionally deferred from the v0.1 release.
   Decide whether to ship as a separate severity tier or behind a toggle (false positives are likely on plain prose).
 - **Allowlist for benign invisible runs** — Indic scripts and certain ZW patterns can be legitimately heavy on zero-width chars; consider opt-in suppression.
 
-## Phase 4: Signed distribution via Homebrew Cask (deferred)
+## Phase 4: Signed distribution via Homebrew Cask
 
-The current v0.1.0 ships as an unsigned zip on a private GitHub Release. To match the jubako distribution pattern:
+Infrastructure is **in place** (`.github/workflows/`, `RELEASE.md`, repo is public).
+Remaining work is operator action, not code:
 
-1. Register Apple Developer ID certificate + `notarytool` API key as GitHub Secrets
-2. Port `.github/workflows/release.yml` from jubako (sign → notarize → staple → DMG → Release → Cask bump)
-3. Add `.github/workflows/build.yml` for unsigned compile-only PR checks
-4. Add a `RELEASE.md` operator runbook (jubako has one)
-5. Open the repo to **Public**
-6. Add `Casks/invixray.rb` to **snaka/homebrew-tap** so `brew install --cask snaka/tap/invixray` works
-7. Cut `v0.x.0` tag → full pipeline runs
+1. Add the 7 repository secrets to `snaka/invixray` — see [RELEASE.md](RELEASE.md)
+2. (Recommended) trigger a `workflow_dispatch` dry-run to validate signing/notarization
+3. Cut `v0.1.1` (annotated tag) → full pipeline runs → Release + `Casks/invixray.rb` lands in `snaka/homebrew-tap`
 
 ## Documentation
 

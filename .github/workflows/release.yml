@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 0.1.1). Manual runs are dry-run: no GitHub Release, no tap bump.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "::error::version is empty"; exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      - name: Install tools
+        run: brew install xcodegen create-dmg
+
+      - name: Import signing certificate
+        env:
+          CERT_BASE64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -e
+          KC="$RUNNER_TEMP/build.keychain"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          printf '%s' "$CERT_BASE64" | base64 --decode -o "$CERT_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KC"
+
+          # Make the temp keychain searchable, keep the login keychain too.
+          EXISTING=$(security list-keychains -d user | sed -E 's/[" ]//g' | tr '\n' ' ')
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$KC" $EXISTING
+          security default-keychain -s "$KC"
+
+          security find-identity -v -p codesigning "$KC"
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Archive
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Invixray.xcodeproj \
+            -scheme Invixray \
+            -configuration Release \
+            -archivePath "$RUNNER_TEMP/Invixray.xcarchive" \
+            -destination 'generic/platform=macOS' \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain" \
+            archive
+
+      - name: Export archive
+        env:
+          TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>signingCertificate</key>
+            <string>Developer ID Application</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Invixray.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      - name: Notarize app
+        env:
+          AC_USERNAME: ${{ secrets.AC_USERNAME }}
+          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+        run: |
+          set -e
+          APP="$RUNNER_TEMP/export/Invixray.app"
+          ZIP="$RUNNER_TEMP/Invixray-notarize.zip"
+          /usr/bin/ditto -c -k --keepParent "$APP" "$ZIP"
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$AC_USERNAME" \
+            --password "$AC_PASSWORD" \
+            --team-id "$AC_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$APP"
+
+      - name: Create DMG
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          create-dmg \
+            --volname "Invixray" \
+            --window-size 540 380 \
+            --icon-size 96 \
+            --icon "Invixray.app" 140 180 \
+            --app-drop-link 400 180 \
+            --no-internet-enable \
+            "$RUNNER_TEMP/Invixray-${VERSION}.dmg" \
+            "$RUNNER_TEMP/export/Invixray.app"
+
+      - name: Notarize DMG
+        env:
+          AC_USERNAME: ${{ secrets.AC_USERNAME }}
+          AC_PASSWORD: ${{ secrets.AC_PASSWORD }}
+          AC_TEAM_ID: ${{ secrets.AC_TEAM_ID }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -e
+          DMG="$RUNNER_TEMP/Invixray-${VERSION}.dmg"
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$AC_USERNAME" \
+            --password "$AC_PASSWORD" \
+            --team-id "$AC_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$DMG"
+
+      - name: Compute SHA256
+        id: hash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          SHA256=$(shasum -a 256 "$RUNNER_TEMP/Invixray-${VERSION}.dmg" | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+          echo "DMG sha256: $SHA256"
+
+      - name: Upload DMG as artifact (always)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Invixray-${{ steps.ver.outputs.version }}-dmg
+          path: ${{ runner.temp }}/Invixray-${{ steps.ver.outputs.version }}.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ runner.temp }}/Invixray-${{ steps.ver.outputs.version }}.dmg
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      - name: Bump tap formula
+        if: github.event_name == 'push'
+        env:
+          TAP_PUSH_TOKEN: ${{ secrets.TAP_PUSH_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          SHA256: ${{ steps.hash.outputs.sha256 }}
+        run: |
+          set -e
+          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/snaka/homebrew-tap.git" "$RUNNER_TEMP/tap"
+          cd "$RUNNER_TEMP/tap"
+          mkdir -p Casks
+          cat > Casks/invixray.rb <<EOF
+          cask "invixray" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/snaka/invixray/releases/download/v#{version}/Invixray-#{version}.dmg"
+            name "Invixray"
+            desc "Menu bar app that flags invisible Unicode used in LLM prompt injection"
+            homepage "https://github.com/snaka/invixray"
+
+            depends_on macos: ">= :sonoma"
+
+            app "Invixray.app"
+
+            zap trash: [
+              "~/Library/Caches/com.snaka.invixray",
+              "~/Library/Preferences/com.snaka.invixray.plist",
+            ]
+          end
+          EOF
+          git config user.email "snaka@hey.com"
+          git config user.name "snaka (release CI)"
+          git add Casks/invixray.rb
+          if git diff --cached --quiet; then
+            echo "No formula changes to commit"
+          else
+            git commit -m "chore: bump invixray to ${VERSION}"
+            git push
+          fi
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/build.keychain" || true

@@ -82,11 +82,20 @@ ROADMAP.md                                   # deferred work
 - Default to no comments. Code should be self-explanatory; rationale lives in `ROADMAP.md` and commit messages.
 - Detection rule changes must trace to a public source (e.g. the Graves paper). Don't invent ad-hoc patterns — false positives on benign Unicode are easy to introduce.
 
+## CI
+
+Two GitHub Actions workflows:
+
+- `.github/workflows/build.yml` — runs on PRs and pushes to `main`; `swift test` + an unsigned compile-only check.
+- `.github/workflows/release.yml` — runs on `v*` tag push (real release) or manual `workflow_dispatch` (dry-run that only uploads the DMG artifact, skipping the Release + tap bump). Full sign / notarize / staple / DMG pipeline, then pushes an updated `Casks/invixray.rb` to **`snaka/homebrew-tap`**.
+
+See **[RELEASE.md](RELEASE.md)** for the secrets list and the operator runbook.
+
 ## Distribution
 
-v0.1.0 is an **unsigned zip on a private GitHub Release**. Download → unzip → either right-click → Open or `xattr -dr com.apple.quarantine Invixray.app`.
+The repo is **public**. The intended channel is `brew install --cask snaka/tap/invixray` (notarized DMG via the release pipeline).
 
-Full sign / notarize / Homebrew Cask pipeline is deferred — see ROADMAP.md "Phase 4".
+`v0.1.0` is the legacy **unsigned** zip from before the pipeline existed. The first signed release is **v0.1.1** (RELEASE.md explains why).
 
 ## Gotchas
 
