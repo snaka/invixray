@@ -17,7 +17,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Resolve version
         id: ver
@@ -166,7 +166,7 @@ jobs:
           echo "DMG sha256: $SHA256"
 
       - name: Upload DMG as artifact (always)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Invixray-${{ steps.ver.outputs.version }}-dmg
           path: ${{ runner.temp }}/Invixray-${{ steps.ver.outputs.version }}.dmg
@@ -175,7 +175,7 @@ jobs:
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ runner.temp }}/Invixray-${{ steps.ver.outputs.version }}.dmg
           generate_release_notes: true
